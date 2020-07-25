@@ -1,0 +1,128 @@
+---
+# Setup OCP4 Helper Node
+
+- hosts: all
+  vars_files:
+    - ../vars/main.yml
+    - ../defaults/main.yml
+
+  tasks:
+  - name: check work directory.
+    stat:
+      path: "{{ workdir }}"
+    register: work_folder
+
+  - name: Create work directory if not exists
+    file:
+      path: "{{ workdir }}"
+      state: directory
+      mode: 0755
+    when: work_folder.stat.exists == false
+
+  - name: clean work directory
+    file:
+      path: "{{ workdir }}"
+      state: "{{ item }}"
+    with_items:
+    - absent
+    - directory
+  
+  - name: Create image directory
+    file:
+      path: "{{ workdir }}/image"
+      state: "{{ item }}"
+    with_items:
+    - absent
+    - directory
+
+  - name: Download image
+    get_url:
+      url: "{{ image_url }}"
+      dest: "{{ workdir }}"
+    when: image_url is defined
+
+  - name: Copy image
+    copy:
+      src: "{{ image_file }}"
+      dest: "{{ workdir }}"
+    when: image_file is defined
+  
+  - name: Get the image file name
+    shell: basename "{{ image_url }}"
+    register: image_name
+    when: image_url is defined
+
+  - name: Get the image file name
+    shell: basename "{{ image_file }}"
+    register: image_name
+    when: image_file is defined
+  
+  - name: Get the rhcos qcow2 file name
+    shell: ls *.qcow2.gz
+    args:
+      chdir: "{{ workdir }}"
+    register: qcow2_file
+  
+  - name: Volume Name 
+    shell: basename {{ qcow2_file.stdout }} .qcow2.gz
+    register: volume_name
+
+  - name: Decompress the rhcos image file
+    shell: gzip -d "{{ qcow2_file.stdout }}"
+    args:
+      chdir: "{{ workdir }}"
+  
+  - name: Get the rhcos qcow2 file name
+    shell: ls *.qcow2
+    args:
+      chdir: "{{ workdir }}"
+    register: qcow2_file
+
+  - name: Extend the qcow2 image
+    shell: qemu-img resize "{{ qcow2_file.stdout }}" +{{ image_size }}G
+    args:
+      chdir: "{{ workdir }}"
+    when: image_size is defined
+
+  
+  - name: Convert qcow2 to raw
+    shell: qemu-img convert -f qcow2 -O raw {{ qcow2_file.stdout }} {{ volume_name.stdout }}
+    args:
+      chdir: "{{ workdir }}"
+  
+  - name: Extend the image
+    shell: qemu-img resize "{{ volume_name.stdout  }}" {{ image_size }}G
+    args:
+      chdir: "{{ workdir }}"
+    when: image_size is defined
+
+  - name: Get the raw volume size
+    shell: ls -l {{ volume_name.stdout }} | awk '{print $5}'
+    register: volume_size
+    args:
+      chdir: "{{ workdir }}"
+
+  - name: Volume to image dir
+    command: mv "{{ workdir }}/{{ volume_name.stdout }}" "{{ workdir }}/image/{{ volume_name.stdout }}"
+
+  - name: Creating metadata file file
+    template:
+      src: ../templates/image.meta.j2
+      dest: "{{ workdir }}/image/{{ imagename }}.meta"
+
+  - name: Creating ovf file
+    template:
+      src: ../templates/image.ovf.j2
+      dest: "{{ workdir }}/image/{{imagename}}.ovf"
+
+  - name: Create OVA image file
+    archive:
+      path: "{{ workdir }}/image/."
+      dest: "{{ workdir }}/{{ imagename }}.ova"
+      format: tar
+
+  - name: Compres OVA image file to gz
+    archive:
+      path: "{{ workdir }}/{{ imagename }}.ova"
+      dest: "{{ workdir }}/{{ imagename }}.ova.gz"
+      format: gz

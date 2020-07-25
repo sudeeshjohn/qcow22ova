@@ -1,0 +1,5 @@
+---
+image_url: https://mirror.openshift.com/pub/openshift-v4/ppc64le/dependencies/rhcos/4.4/4.4.9/rhcos-4.4.9-ppc64le-openstack.ppc64le.qcow2.gz
+#image_file: ~/Downloads/rhcos-4.4.9-ppc64le-openstack.ppc64le.qcow2.gz
+image_size: 5
+imagename: rhcos-44
